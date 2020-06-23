@@ -13,7 +13,7 @@ import statistics
 import yfinance as yf
 
 # Importing the training set
-dataset_train = pd.read_csv('apple_1min.csv')
+dataset_train = pd.read_csv('coca_1min.csv')
 dataset_train = dataset_train.dropna()
 training_set = dataset_train.iloc[:,1:].values
 # Feature Scaling
@@ -69,18 +69,12 @@ regressor.add(Dense(units = 5))
 regressor.compile(optimizer = 'adam', loss = 'mean_squared_error')
         
 from keras.models import load_model
-regressor=load_model('biapple1.h5')
-
-
-
-
-
-
+regressor=load_model('bicoca1.h5')
 
 def predict_1min(j,flag, trend1):
     while True:
         start_time  = time.process_time()
-        if j == 4 and flag <=1:
+        if j == 4 and flag <= 1:
             trend1 = 0
             j = 0
             print("\nreset\n")
@@ -91,7 +85,7 @@ def predict_1min(j,flag, trend1):
 
         data = yf.download(  # or pdr.get_data_yahoo(...
                 # tickers  or string as well
-                tickers = " AAPL ", 
+                tickers = "KO" ,
         
                 # use "period" instead of start/end
                 # valid periods: 1d,5d,1mo,3mo,6mo,1y,2y,5y,10y,ytd,max
@@ -102,11 +96,11 @@ def predict_1min(j,flag, trend1):
                 # valid intervals: 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo
                 # (optional, default is '1d')
                 interval = "1m")
-        
-        df = pd.read_csv('apple_1_test.csv')
+         
+        df = pd.read_csv('coca_1_test.csv')
 
                 
-        # dropping duplicate values 
+        # dro pping duplicate values 
         df.drop_duplicates(keep='first',inplace=True)
         
         data = data.drop(['Adj Close'], axis = 1)
@@ -116,11 +110,11 @@ def predict_1min(j,flag, trend1):
         df = df.append(data.iloc[-2,:], ignore_index = True)
         indexs = data.index
         df.iloc[-1:,0]= indexs[-2]       
-        df.to_csv('apple_1_test.csv', index = False)
-
+        df.to_csv('coca_1_test.csv', index = False)
         
-        dataset_train = pd.read_csv('apple_1min.csv')
+        dataset_train = pd.read_csv('coca_1min.csv')
         dataset_train = dataset_train.dropna()
+        
         dataset_total = pd.concat((dataset_train, df), axis = 0, sort = False)
         inputs = dataset_total[len(dataset_total) - len(df) - 120:]
         inputs = inputs.drop(["Datetime"], axis = 1)
@@ -135,12 +129,13 @@ def predict_1min(j,flag, trend1):
         predicted_stock_price = regressor.predict(X_test)
         predicted_stock_price = sc.inverse_transform(predicted_stock_price)
 
-        pd.DataFrame(predicted_stock_price).to_csv("prediction_1min.csv", index=False)
+        pd.DataFrame(predicted_stock_price).to_csv("prediction_1min_coca.csv", index=False)
         
         trend1 = trend1 + df.iloc[-1,3] - predicted_stock_price[-1,3]
-        text_file = open("trend1.txt", "w")
-        text_file.write(str(trend1))
+        text_file = open("trend1c.txt", "w")
+        text_file.write(str(trend1)) 
         text_file.close()   
+        
         
         from datetime import datetime
         now = datetime.now()
@@ -152,15 +147,15 @@ def predict_1min(j,flag, trend1):
         j+=1
         flag = flag + 0.25
 
-
-        print("Trend: ", trend1)
+        print("Trend:", trend1)
         print("\nNext value of time "+ str(indexs[-1]))
-
         
         if(j == 4):
             time.sleep(60 - 4)
         else:
             time.sleep(60)
+
+
 
 
 j = 0 
@@ -173,5 +168,7 @@ while True:
         predict_1min(0,flag, 0)
         break
     
+    
+
     
 

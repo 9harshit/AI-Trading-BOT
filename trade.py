@@ -13,8 +13,9 @@ base_url = "https://paper-api.alpaca.markets"
 acnt_url = "{}/v2/account".format(base_url)
 orders_url = "{}/v2/orders".format(base_url)
 
-api_key = "PKKIEAEC99Y2B7TB04FD"
-secret_key = "ITyHutdPfoTAdpvRZcupni207Qy9nc0a64XcO6NQ"
+
+api_key = "PK2OKLM3KR8YMXPTF12M"
+secret_key = "PXxKvQiFIARgaQVDpO9is7kRlEPCZPla7ytBHJnA"
 Headers = {'APCA-API-KEY-ID' : api_key, 'APCA-API-SECRET-KEY' :secret_key }
 
 
@@ -36,7 +37,10 @@ def create_order(symbol, qty, side, typ, time_in_force):
     return json.loads(r.content)
 
 acnt = get_account()
+bp = float(acnt["cash"])
 print (acnt)
+
 
 respone = create_order("AAPL", 1, "buy", "market", "day")
 print (respone )
+

@@ -93,9 +93,9 @@ def state_creator(data, timestep, window_size):
 
     return np.array([state])
 
-dataset = pd.read_csv("apple_5min.csv")
+dataset = pd.read_csv("apple_1min.csv")
 data = np.array(dataset["Close"])
-episodes = 1
+episodes = 100
 batch_size = 32
 data_samples  = len(data) - 1 
 window_size = 6
@@ -140,6 +140,5 @@ for episode in range(1, episodes+1):
             
         if len(trader.memory) > batch_size:
            trader.batch_trade(batch_size)
-'''   
     if episode % 10 == 0:
-        trader.model.save("trader.h5")'''
+        trader.model.save("traderann.h5")

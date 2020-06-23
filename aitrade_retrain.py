@@ -1,7 +1,17 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Jun 11 19:14:59 2020
+
+@author: harshit
+"""
+
+
 import math
 import random
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import LSTM
@@ -10,6 +20,41 @@ from tensorflow.keras.layers import Dropout
 from tqdm import  tqdm
 from collections import deque
 
+def model_builder():
+
+    #MODEL WILL RETURN WILL ACTION TO PERFROM AND INPUT IS State/prices
+
+        # Initialising the RNN
+    regressor = Sequential()
+    
+    # Adding the first LSTM layer and some Dropout regularisation
+    regressor.add(LSTM(units = 75, return_sequences = True, input_shape = (state_reshaped.shape[1], 5)))
+    regressor.add(Dropout(0.2))
+    
+    # Adding a second LSTM layer and some Dropout regularisation
+    regressor.add(LSTM(units = 75, return_sequences = True))
+    regressor.add(Dropout(0.2))
+    
+    # Adding a third LSTM layer and some Dropout regularisation
+    regressor.add(LSTM(units = 75, return_sequences = True))
+    regressor.add(Dropout(0.2))
+    
+    # Adding a fourth LSTM layer and some Dropout regularisation
+    regressor.add(LSTM(units = 75))
+    regressor.add(Dropout(0.2))
+    
+    # Adding the output layer
+    regressor.add(Dense(units = 3, activation = "linear"))
+    
+    # Compiling the RNN
+    regressor.compile(optimizer = 'adam', loss = 'mean_squared_error')#OUTPUT AS SELL, BUY, HOLD
+        
+    from tensorflow.keras.models import load_model
+    regressor=load_model('trader1min_10.h5')
+
+
+
+    return regressor
 class AI_Trader():
     def __init__(self, state_size, action_space = 3, model_name = "AITRADER"): #HOLD, BUY, SELL
        
@@ -24,38 +69,9 @@ class AI_Trader():
         self.epsilon_final = 0.01
         self.epsilon_decay = 0.990
 
-        self.model = self.model_builder()
+        self.model = model_builder()
 
-    def model_builder(self):
 
-        #MODEL WILL RETURN WILL ACTION TO PERFROM AND INPUT IS State/prices
-        
-        # Initialising the RNN
-        regressor = Sequential()
-        
-        # Adding the first LSTM layer and some Dropout regularisation
-        regressor.add(LSTM(units = 75, return_sequences = True, input_shape = (state_reshaped.shape[1], 5)))
-        regressor.add(Dropout(0.2))
-        
-        # Adding a second LSTM layer and some Dropout regularisation
-        regressor.add(LSTM(units = 75, return_sequences = True))
-        regressor.add(Dropout(0.2))
-        
-        # Adding a third LSTM layer and some Dropout regularisation
-        regressor.add(LSTM(units = 75, return_sequences = True))
-        regressor.add(Dropout(0.2))
-        
-        # Adding a fourth LSTM layer and some Dropout regularisation
-        regressor.add(LSTM(units = 75))
-        regressor.add(Dropout(0.2))
-        
-        # Adding the output layer
-        regressor.add(Dense(units = self.action_space, activation = "linear"))
-        
-        # Compiling the RNN
-        regressor.compile(optimizer = 'adam', loss = 'mean_squared_error')#OUTPUT AS SELL, BUY, HOLD
-
-        return regressor
 
     #TRADE FUNCTION TAKES STATE AS AN INPUT AND OUTPUT IS ACTION TO PERFROM ACTION IN PARTICULAR STATE
     def trade(self, state):
@@ -109,6 +125,9 @@ def state_creator(data, timestep, window_size):
     else:
         windowed_data = - starting_id * [data[0,:]] + list(data[0:timestep+1,:])
         
+    state = []
+
+
     return np.array(windowed_data)
 
 dataset_train = pd.read_csv('apple_1min.csv')
@@ -133,8 +152,8 @@ def reshaping_state(data, rnn_tmstp):
 episodes = 10
 batch_size = 32
 data_samples  = len(training_set_scaled) - 1 
-window_size = 11
 timestep = 10
+window_size = timestep+ 1
 
 state = state_creator(training_set_scaled, 0, window_size+1)
 

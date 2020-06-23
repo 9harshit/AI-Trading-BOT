@@ -14,7 +14,6 @@ Created on Wed May 27 11:42:36 2020
 
 # Importing the libraries
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 
 import requests,json
@@ -22,8 +21,43 @@ import time
 import statistics
 
 import yfinance as yf
-import pandas as pd
-from datetime import datetime
+
+with open('inventory.txt', 'r') as f:
+    inventory = f.readlines()
+
+if len(inventory) >1 :
+    inventory  = list(np.float_(inventory))
+    inventory.pop(0)
+    
+trend5 = 0 
+
+base_url = "https://paper-api.alpaca.markets"
+acnt_url = "{}/v2/account".format(base_url) 
+orders_url = "{}/v2/orders".format(base_url)
+
+api_key = "PKVC3LSIKP9RR7QFYPRY"
+secret_key = "oFClvHYMl8sJNVoiKzYTgOz3Ao5dLva2VYowFWaI"
+Headers = {'APCA-API-KEY-ID' : api_key, 'APCA-API-SECRET-KEY' :secret_key }
+
+
+def get_account():
+        r = requests.get(acnt_url, headers = Headers)
+        return json.loads(r.content)
+ 
+r = get_account()
+print(r)
+
+def create_order(symbol, qty, side, typ, time_in_force):
+    data = {  "symbol": symbol,
+  "qty": qty,
+  "type": typ,
+  "side": side,
+  "time_in_force": time_in_force,
+  }
+    
+    r = requests.post(orders_url, json = data, headers = Headers)
+
+    return json.loads(r.content)
 
 # Importing the training set
 dataset_train = pd.read_csv('apple_5min.csv')
@@ -89,6 +123,8 @@ regressor=load_model('apple5.h5')
 def predict_5min(j):
     while True:
         start_time = time.process_time()
+        trend5 = 0
+        trend1 = 0
         data = yf.download(  # or pdr.get_data_yahoo(...
                 # tickers  or string as well
                 tickers = " AAPL ",
@@ -113,10 +149,14 @@ def predict_5min(j):
         df = df.append(data.iloc[-2,:], ignore_index = True)
         indexs = data.index
         df.iloc[-1:,0]= indexs[-2]
+        
+        df.drop_duplicates(keep='first',inplace=True)
 
         df.to_csv('apple_5_test.csv', index = False)
         
-        real_stock_price = df.iloc[:, 1:].values
+                
+        dataset_train = pd.read_csv('apple_5min.csv')
+        dataset_train = dataset_train.dropna()
         
         dataset_total = pd.concat((dataset_train, df), axis = 0, sort = False)
         inputs = dataset_total[len(dataset_total) - len(df) - 120:]
@@ -132,31 +172,89 @@ def predict_5min(j):
         X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 5))
         predicted_stock_price = regressor.predict(X_test)
         predicted_stock_price = sc.inverse_transform(predicted_stock_price)
+    
         
+        trend5 = df.iloc[-1,3] - predicted_stock_price[-1,3]
+        
+        #acnt = get_account()
+        #cash = float(acnt["cash"])
+        
+        '''
+        
+        values_1 = pd.read_csv("apple_1_test.csv").values
+        predict1 = pd.read_csv("prediction_1min.csv").values
+        
+        values_2 = values_1[-5:-1,3]
+        for i in range(3):
+            trend1 = trend1  + values_2[i+1] - values_2[i]   
+            
+        trend1 = trend1 + values_1[-1,3] - predict1[-1,3]
+        
+        trend1 = np.subtract(values_1[-5:,3],values)
+'''
+        f = open("trend1.txt", "r")
+        trend1 = float(f.read())
+        
+        if (trend5 >= 0 and trend1 >=0  and len(inventory) >= 1):
+             
+            respone = create_order("AAPL", 1, "sell", "market", "day")
+            inventory.pop(0)
+            pd.DataFrame(inventory).to_csv("inventory.txt", index = False)
+    
+            print (respone)
+              
+            print("\nSelling Stock")
+            
+            #and cash >= df.iloc[-1,3]
+        if (trend5 < 0 and trend1 < 0 ):
+              
+            respone = create_order("AAPL", 1, "buy", "market", "day")
+              
+            inventory.append(df.iloc[-1,3])
+            
+            pd.DataFrame(inventory).to_csv("inventory.txt", index = False)
+       
+            print (respone )
+            
+            print("\nBuying Stock")
+            
+        if((trend5 < 0 and trend1 > 0 ) or (trend5 > 0 and trend1 < 0) ):
+            print("\nHolding Stock")
+            
         pd.DataFrame(predicted_stock_price).to_csv("prediction_5min.csv", index=False)
 
         now = datetime.now()
         current_time = now.strftime("%d/%m/%y %H:%M:%S")
+        
         print ("\nPrediction at: ",current_time)
         print(predicted_stock_price[-1:])
         
-        
+        '''
         print("\nAcutal Standard Deviation")
         print(statistics.stdev(df.iloc[-5:,3]))
         
         print("\nPredicted Standard Deviation")
         print(statistics.stdev(pd.DataFrame(predicted_stock_price).iloc[-5:,3]))
         
+        '''
         
         print("\nNext value of time"+ str(indexs[-1]))
+        
+        print("\nTrend1: ", trend1 ," Trend5 : ", trend5)
 
-        time.sleep(300 - (time.process_time() - start_time))
+        j+=1
+        if j==4:
+            time.sleep(300 - 4 )
+            j=0
+        else:
+            time.sleep(300 )
+
 
 j = 0 
 while True:
     from datetime import datetime
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
-    if current_time == "19:00:00":
+    if current_time == "23:39:45":
         predict_5min(j)
         break

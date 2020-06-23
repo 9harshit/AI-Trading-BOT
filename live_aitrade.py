@@ -25,31 +25,36 @@ import yfinance as yf
 action_space = 3
 memory = deque(maxlen = 2000) #EXPERIENCE REPLACY
 inventory = [] #STOCKS WE OWN
-'''
-with open('inventory.txt', 'r') as f:
+
+with open('inventory_5min.txt', 'r') as f:
     inventory = f.readlines()
 
-inventory  = list(np.float_(inventory))
-if len(inventory) >0 :
+if len(inventory) >1 :
+    inventory  = list(np.float_(inventory))
     inventory.pop(0)
-    '''
-window_size = 13
-total_porfit = 0 
+    
+timestep = 12
+window_size = timestep + 1
+
 
 gamma = 0.90
-epsilon = 0.01
+epsilon = 0.05
 
 base_url = "https://paper-api.alpaca.markets"
 acnt_url = "{}/v2/account".format(base_url) 
 orders_url = "{}/v2/orders".format(base_url)
 
-api_key = "PK2OKLM3KR8YMXPTF12M"
-secret_key = "PXxKvQiFIARgaQVDpO9is7kRlEPCZPla7ytBHJnA"
+api_key = "PKSOHEJ8K0OSXT1G09MV"
+secret_key = "/WoCAmSF5ggfSYTZxru2k3QyxenQYq4k5HJBCDGc"
 Headers = {'APCA-API-KEY-ID' : api_key, 'APCA-API-SECRET-KEY' :secret_key }
 
 
-r = requests.get(acnt_url, headers = Headers)
-print(json.loads(r.content))
+def get_account():
+        r = requests.get(acnt_url, headers = Headers)
+        return json.loads(r.content)
+ 
+r = get_account()
+print(r)
 
 
 dataset_train = pd.read_csv('apple_5min.csv')
@@ -66,7 +71,7 @@ training_set_scaled = sc.fit_transform(training_set)
 regressor = Sequential()
 
 # Adding the first LSTM layer and some Dropout regularisation
-regressor.add(LSTM(units = 75, return_sequences = True, input_shape = (12, 5)))
+regressor.add(LSTM(units = 75, return_sequences = True, input_shape = (timestep, 5)))
 regressor.add(Dropout(0.2))
 
 # Adding a second LSTM layer and some Dropout regularisation
@@ -97,13 +102,9 @@ regressor=load_model('trader.h5')
 
 #TRADE FUNCTION TAKES STATE AS AN INPUT AND OUTPUT IS ACTION TO PERFROM ACTION IN PARTICULAR STATE
 def trade(state):
-
-    #ACTION SELECTION , SELECT ACTION FROM THE MODEL OR RANDOM ACTION
-
-    if random.random() <= epsilon:
-        return random.randrange(action_space) #returns random action 
-
+    print(state)
     action = regressor.predict(state)
+    print(action)
     #WILL RETURN ACTION WITH HIGHEST PROBABILITY
     return np.argmax(action[0]) #0 because of output shape
 
@@ -113,33 +114,28 @@ def stock_price_format(n):
 
     else:
         return "${:.2f}".format(abs(n))
-
-def state_creator(data, timestep, window_size):
     
-    starting_id = timestep - window_size +1
-
-    if starting_id >= 0:
-        windowed_data = data[starting_id:timestep+1,:]
-    else:
-        windowed_data = - starting_id * [data[0,:]] + list(data[0:timestep+1,:])
-        
-    state = []
     
-    for i in range(window_size - 1):
-        state.append((windowed_data[i]))
+def state_creator(data, timestep):
+    
+    state = data[-(timestep+1):,:]
+
 
     return np.array(state)
 
 
 
 def reshaping_state(data, rnn_tmstp):
+    data = sc.transform(data)
+
     state_reshaped = []
     
     for i in range(rnn_tmstp, (data.shape[0])):
-        state_reshaped.append(data[i-rnn_tmstp:i])
+        state_reshaped.append(data[i-rnn_tmstp+1:])
         
     state_reshaped = np.array(state_reshaped)
     state_reshaped = np.reshape(state_reshaped, (state_reshaped.shape[0], state_reshaped.shape[1], 5))
+    print(state_reshaped)
     return state_reshaped
 
  
@@ -157,9 +153,9 @@ def create_order(symbol, qty, side, typ, time_in_force):
     return json.loads(r.content)
 
 
-    
-
 def live():
+    total_profit = 0
+
     while True:
         start_time = time.process_time()
         data = yf.download(  # or pdr.get_data_yahoo(...
@@ -193,48 +189,53 @@ def live():
         inputs = dataset_total[len(dataset_total) - len(df) - 120:]
         inputs = inputs.drop(["Datetime"], axis = 1)
         inputs = inputs.values
-        original_inputs = inputs
         #inputs = inputs.reshape(1,-1)
-        inputs = sc.transform(inputs)
         
-        state = state_creator(inputs, 0, window_size+1)
+        state = state_creator(inputs, timestep)
         
-        state_reshaped = reshaping_state(state, 12)
+        state_reshaped = reshaping_state(state, timestep)
         
         
         action = trade(state_reshaped) 
-    
-        if action == 1 : 
+        acnt = get_account()
+        cash = float(acnt["cash"])
+
+
+        if action == 1 and cash >= inputs[-1,3] : 
     
             respone = create_order("AAPL", 1, "buy", "market", "day")
             
-            inventory.append((original_inputs[-1,3]))
+            inventory.append((inputs[-1,3]))
             
-            print("Bought at : ", (original_inputs[-1,3]))
+            print("Bought at : ", stock_price_format(inputs[-1,3]))
+            pd.DataFrame(inventory).to_csv("inventory_5min.txt", index = False)
+
             print (respone )
             
-        elif action == 2 and len(inventory) > 0:
+        if action == 2 and len(inventory) >= 1:
             
             respone = create_order("AAPL", 1, "sell", "market", "day")
             buy_price = inventory.pop(0)
+            pd.DataFrame(inventory).to_csv("inventory_5min.txt", index = False)
+
             print("Bought at:", stock_price_format(buy_price))
-            print("Sold at:", (original_inputs[-1,3]))
-            #total_porfit += inputs[-1,3] - buy_price
+            print("Sold at:", (inputs[-1,3]))
+            
+            total_profit += inputs[-1,3] - buy_price
+            print(total_profit)
            # print("Apple Stock Bought at " + stock_price_format(buy_price),"Sold at " + stock_price_format((training_set[-1,3])),"Profit " + stock_price_format((training_set[-1,3] - buy_price)))
     
             print (respone)
             
-        else :
+        if action == 0 :
             print("Holding Apple Stock")
+        
+        print("action: ",action)
+
     
         print("\nNext value of time"+ str(indexs[-1]))
         
         
-        current_time = now.strftime("%H:%M:%S")
-        if current_time == "02:00:00": 
-            break
-        
-        pd.DataFrame(inventory).to_csv("inventory.txt", index = False)
         time.sleep(300 - (time.process_time() - start_time))
 
 
@@ -242,6 +243,7 @@ while True:
     from datetime import datetime
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
-    if current_time == "19:05:03":
+    if current_time == "20:27:03":
         live()
         break
+    
