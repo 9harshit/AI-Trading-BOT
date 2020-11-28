@@ -115,7 +115,7 @@ prev_profit = 0
 # Reshaping
 X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 5))
 
-data_samples = len(training_set_scaled) - 1
+data_samples = len(X_train) - 1
 
 trader = AI_Trader((X_train.shape[1],5))
 
@@ -123,6 +123,7 @@ for episode in range(1, episodes+1):
     print("\nEpisodes :{}/{}".format(episode,episodes))
     total_porfit = 0
     trader.inventory = []
+    trader.memory.clear()
     tran = 0
 
     state = X_train[0:1,:]
@@ -130,7 +131,6 @@ for episode in range(1, episodes+1):
 
 
     for t in tqdm(range(data_samples)):
-
         action = trader.trade(state)
         next_state = X_train[t+1:t+2,:]
 
@@ -144,16 +144,27 @@ for episode in range(1, episodes+1):
             print("\nApple Stock Bought at " + (str(actual_state_value[-1,3])))
 
         elif action == 2 and len(trader.inventory) > 0:
-            buy_price = trader.inventory.pop(0)
             tran += 1
 
-            reward = max((actual_state_value[-1,3] - buy_price), 0)
-            total_porfit += actual_state_value[-1,3] - buy_price
-            print("\nApple Stock Bought at " + str(buy_price)+ " Sold at " + str(actual_state_value[-1,3]),"Profit " + str(actual_state_value[-1,3] - buy_price))
+            #Selling one stock at a time
+
+            #buy_price = trader.inventory.pop(0)
+            #reward = actual_state_value[-1,3] - buy_price
+            #total_porfit += actual_state_value[-1,3] - buy_price
+            #print("\nApple Stock Bought at " + str(buy_price)+ " Sold at " + str(actual_state_value[-1,3]),"Profit " + str(actual_state_value[-1,3] - buy_price))
+
+            #Selling all stocks present in the inventory
+
+            value = [x - actual_state_value[-1,2] for x in trader.inventory]
+            reward += sum(value)
+            total_porfit += sum(value)
+            trader.inventory.clear()
+            print("\nProfit on the trade", sum(value))
+
 
         else :
             print("\nHolding Apple Stock")
-        if t == data_samples - 1 :
+        if t == data_samples - 1:
             done = True
         else:
             done = False
@@ -167,7 +178,15 @@ for episode in range(1, episodes+1):
 
 
         if done:
+            if len(trader.inventory)>0:
+                #Selling remaining of stock left after completion of the episode
+                value = [x - actual_state_value[-1,2] for x in trader.inventory]
+                total_porfit += sum(value)
             trader.model.save("trader_rnn_5min.h5")
-            print("***Training done***")
+            print("***Episode done***")
+
         if len(trader.memory) > batch_size:
+            print("batch trade")
             trader.batch_trade(batch_size)
+
+    print("***Training done***")
