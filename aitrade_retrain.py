@@ -7,18 +7,16 @@ Created on Thu Jun 11 19:14:59 2020
 """
 
 
-import math
 import random
+from collections import deque
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.layers import LSTM
-from tensorflow.keras.layers import Dropout
+from tqdm import tqdm
 
-from tqdm import  tqdm
-from collections import deque
 
 def model_builder():
 
@@ -74,14 +72,16 @@ class AI_Trader():
 
 
     #TRADE FUNCTION TAKES STATE AS AN INPUT AND OUTPUT IS ACTION TO PERFROM ACTION IN PARTICULAR STATE
+        #TRADE FUNCTION TAKES STATE AS AN INPUT AND OUTPUT IS ACTION TO PERFROM ACTION IN PARTICULAR STATE
     def trade(self, state):
 
         #ACTION SELECTION , SELECT ACTION FROM THE MODEL OR RANDOM ACTION
 
         if random.random() <= self.epsilon:
-            return random.randrange(self.action_space) #returns random action 
+            return random.randrange(self.action_space) #returns random action
 
         action = self.model.predict(state)
+
         #WILL RETURN ACTION WITH HIGHEST PROBABILITY
         return np.argmax(action[0]) #0 because of output shape
 
@@ -98,99 +98,75 @@ class AI_Trader():
                 reward = reward + self.gamma * np.amax(self.model.predict(next_state)[0])
 
             target = self.model.predict(state)
+
             target[0][action] = reward
-            
+
             self.model.fit(state, target, epochs = 1, verbose = 0 )
 
         if self.epsilon > self.epsilon_final:
             self.epsilon *= self.epsilon_decay
 
-#TO GET REAL JUMP IN PRICES EVEN THOUGH PRICES ARE DIFFERNT
-def sigmoid(x):
-    return 1/ (1 + math.exp(-x))
-
-def stock_price_format(n):
-    if n < 0:
-        return "-${:.2f}".format(abs(n))
-
-    else:
-        return "${:.2f}".format(abs(n))
-
-def state_creator(data, timestep, window_size):
-    
-    starting_id = timestep - window_size +1
-
-    if starting_id >= 0:
-        windowed_data = data[starting_id:timestep+1,:]
-    else:
-        windowed_data = - starting_id * [data[0,:]] + list(data[0:timestep+1,:])
-        
-    state = []
 
 
-    return np.array(windowed_data)
 
-dataset_train = pd.read_csv('apple_1min.csv')
+
+episodes = 10
+batch_size = 32
+timestep = 12
+dataset_train = pd.read_csv('apple_5min.csv')
 dataset_train = dataset_train.dropna()
 training_set = dataset_train.iloc[:,1:].values
-# Feature Scaling
-from sklearn.preprocessing import MinMaxScaler
 sc = MinMaxScaler(feature_range = (0, 1))
 training_set_scaled = sc.fit_transform(training_set)
 
 
-def reshaping_state(data, rnn_tmstp):
-    state_reshaped = []
-    
-    for i in range(rnn_tmstp, (data.shape[0])):
-        state_reshaped.append(data[i-rnn_tmstp:i])
-        
-    state_reshaped = np.array(state_reshaped)
-    state_reshaped = np.reshape(state_reshaped, (state_reshaped.shape[0], state_reshaped.shape[1], 5))
-    return state_reshaped
+# Creating a data structure with 60 DAYsteps and 1 output
+X_train = []
+y_train = []
+for i in range(timestep, (training_set_scaled.shape[0])):
+    X_train.append(training_set_scaled[i-timestep:i])
+X_train = np.array(X_train)
 
-episodes = 10
-batch_size = 32
-data_samples  = len(training_set_scaled) - 1 
-timestep = 10
-window_size = timestep+ 1
+prev_profit = 0
 
-state = state_creator(training_set_scaled, 0, window_size+1)
+# Reshaping
+X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 5))
 
-state_reshaped = reshaping_state(state, timestep)
-trader = AI_Trader(window_size)
+data_samples = len(training_set_scaled) - 1
+
+trader = AI_Trader((X_train.shape[1],5))
 
 for episode in range(1, episodes+1):
     print("\nEpisodes :{}/{}".format(episode,episodes))
     total_porfit = 0
     trader.inventory = []
-    tran = 0 
+    tran = 0
 
-    state = state_creator(training_set_scaled, 0, window_size+1)
+    state = X_train[0:1,:]
 
-    state_reshaped = reshaping_state(state, timestep)
-    
+
+
     for t in tqdm(range(data_samples)):
-        
-        action = trader.trade(state_reshaped)
-        next_state = state_creator(training_set_scaled, t+1, window_size + 1)
 
-        next_state_reshaped = reshaping_state(next_state, timestep)
+        action = trader.trade(state)
+        next_state = X_train[t+1:t+2,:]
+
+        actual_state_value = sc.inverse_transform(state[0:1,-1,:])
 
         reward = 0
 
-        if action == 1 : 
-            trader.inventory.append(training_set[t,3])
+        if action == 1 :
+            trader.inventory.append(actual_state_value[-1,3])
             tran += 1
-            print("\nApple Stock Bought at " + stock_price_format(training_set[t,3]))
-                  
+            print("\nApple Stock Bought at " + (str(actual_state_value[-1,3])))
+
         elif action == 2 and len(trader.inventory) > 0:
             buy_price = trader.inventory.pop(0)
             tran += 1
 
-            reward = max(training_set[t,3] - buy_price, 0)
-            total_porfit += training_set[t,3] - buy_price
-            print("\nApple Stock Bought at " + stock_price_format(buy_price),"Sold at " + stock_price_format((training_set[t,3])),"Profit " + stock_price_format((training_set[t,3] - buy_price)))
+            reward = max((actual_state_value[-1,3] - buy_price), 0)
+            total_porfit += actual_state_value[-1,3] - buy_price
+            print("\nApple Stock Bought at " + str(buy_price)+ " Sold at " + str(actual_state_value[-1,3]),"Profit " + str(actual_state_value[-1,3] - buy_price))
 
         else :
             print("\nHolding Apple Stock")
@@ -199,17 +175,16 @@ for episode in range(1, episodes+1):
         else:
             done = False
 
-        trader.memory.append((state_reshaped, action, reward, next_state_reshaped, done))
-        state_reshaped = next_state_reshaped
-        
+        trader.memory.append((state, action, reward, next_state, done))
+        state = next_state
+
         print("Trans :", tran)
-        print("\nTOTAL PROFIT: {}".format(stock_price_format(total_porfit)))
+        print("\nTOTAL PROFIT: {}\n".format((total_porfit)))
+
+
 
         if done:
-           trader.model.save("trader1min_10.h5")
+            trader.model.save("trader_rnn_5min.h5")
+            print("***Training done***")
         if len(trader.memory) > batch_size:
             trader.batch_trade(batch_size)
-        
-
-
-
